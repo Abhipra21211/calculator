@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Monthly Personal Expense Calculator</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+    }
+
+    h1 {
+      color: #008080;
+      text-align: center;
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin-bottom: 20px;
+    }
+
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      text-align: left;
+    }
+
+    th {
+      background-color: #f2f2f2;
+    }
+
+    .total {
+      font-weight: bold;
+      color: #000;
+    }
+
+    .graph {
+      float: right;
+      width: 400px;
+      height: 300px;
+      margin-left: 20px;
+      background-color: #f2f2f2;
+    }
+
+    .csv-download {
+      text-align: center;
+      margin-top: 20px;
+    }
+
+    .csv-download a {
+      background-color: #008080;
+      color: #fff;
+      text-decoration: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+    }
+
+    .csv-download a:hover {
+      background-color: #005959;
+    }
+
+    .expense-image {
+      max-width: 200px;
+      max-height: 200px;
+      display: block;
+      margin: 10px auto;
+    }
+
+    .edit-btn, .delete-btn {
+      background-color: #008080;
+      color: #fff;
+      text-decoration: none;
+      padding: 5px 10px;
+      border-radius: 4px;
+    }
+
+    .edit-btn:hover, .delete-btn:hover {
+      background-color: #005959;
+    }
+
+    .website-credit {
+      position: fixed;
+      bottom: 10px;
+      right: 10px;
+      font-size: 12px;
+      color: #999;
+    }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.26.0/dist/apexcharts.min.js"></script>
+  <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+</head>
+<body>
+  <h1>Monthly Personal Expense Calculator</h1>
+
+  <form id="expense-form">
+    <label for="date">Date:</label>
+    <input type="date" id="date" name="date" required>
+
+    <label for="time">Time:</label>
+    <input type="time" id="time" name="time" required>
+
+    <label for="expense-detail">Expense Detail:</label>
+    <input type="text" id="expense-detail" name="expense-detail" required>
+
+    <label for="expense-amount">Expense Amount:</label>
+    <input type="number" id="expense-amount" name="expense-amount" required>
+
+    <label for="expense-bill">Expense Bill Image/PDF:</label>
+    <input type="file" id="expense-bill" name="expense-bill">
+
+    <button type="submit">Add Expense</button>
+  </form>
+
+  <table id="expense-table">
+    <thead>
+      <tr>
+        <th>Sr No</th>
+        <th>Date</th>
+        <th>Time</th>
+        <th>Expense Detail</th>
+        <th>Expense Amount</th>
+        <th>Expense Bill</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+    <tfoot>
+      <tr>
+        <td colspan="4" class="total">Date-wise Total Amount:</td>
+        <td id="date-wise-total" class="total" colspan="2"></td>
+        <td></td>
+      </tr>
+      <tr>
+        <td colspan="4" class="total">Monthly Expense Total Amount:</td>
+        <td id="monthly-total" class="total"></td>
+        <td colspan="2"></td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <div class="graph" id="expense-chart"></div>
+
+  <div class="csv-download">
+    <a href="#" id="download-csv">Download CSV</a>
+  </div>
+
+  <div id="expense-bill-preview"></div>
+
+  <div class="download-image">
+    <a href="#" id="download-website-image">Download Website Image</a>
+  </div>
+
+  <div class="website-credit">This website is created by Abhishek Kumar as of <span id="creation-date"></span></div>
+
+  <script>
+    let expenses = [];
+    let srNo = 1;
+
+    function updateExpenseTable() {
+      const tableBody = document.querySelector('#expense-table tbody');
+      tableBody.innerHTML = '';
+
+      expenses.forEach((expense) => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${expense.srNo}</td>
+          <td>${expense.date}</td>
+          <td>${expense.time}</td>
+          <td>${expense.detail}</td>
+          <td>${formatAmount(expense.amount)}</td>
+          <td>${expense.bill ? `<a href="${expense.bill}" target="_blank"><img src="${expense.bill}" class="expense-image"></a>` : '-'}</td>
+          <td>
+            <a href="#" class="edit-btn" onclick="editExpense(${expense.srNo})">Edit</a>
+            <a href="#" class="delete-btn" onclick="deleteExpense(${expense.srNo})">Delete</a>
+          </td>
+        `;
+        tableBody.appendChild(row);
+      });
+
+      calculateTotals();
+      updateChart();
+    }
+
+    function formatAmount(amount) {
+      return new Intl.NumberFormat('en-IN').format(amount);
+    }
+
+    function calculateTotals() {
+      const dateWiseTotals = {};
+
+      expenses.forEach((expense) => {
+        const date = expense.date;
+        if (date in dateWiseTotals) {
+          dateWiseTotals[date] += Number(expense.amount);
+        } else {
+          dateWiseTotals[date] = Number(expense.amount);
+        }
+      });
+
+      let dateWiseTotalHtml = '';
+      let monthlyTotal = 0;
+
+      for (const date in dateWiseTotals) {
+        dateWiseTotalHtml += `${date}: ${formatAmount(dateWiseTotals[date])}<br>`;
+        monthlyTotal += dateWiseTotals[date];
+      }
+
+      document.getElementById('date-wise-total').innerHTML = dateWiseTotalHtml;
+      document.getElementById('monthly-total').textContent = formatAmount(monthlyTotal);
+    }
+
+    function updateChart() {
+      const chartData = Object.keys(expenses).map((key) => {
+        const expense = expenses[key];
+        return {
+          x: expense.date,
+          y: Number(expense.amount)
+        };
+      });
+
+      const options = {
+        series: [{
+          name: 'Expense',
+          data: chartData
+        }],
+        chart: {
+          type: 'bar',
+          height: 300
+        },
+        xaxis: {
+          type: 'datetime',
+          labels: {
+            format: 'dd/MM/yyyy'
+          }
+        },
+        yaxis: {
+          labels: {
+            formatter: function (value) {
+              return value.toFixed(2);
+            }
+          }
+        }
+      };
+
+      const chart = new ApexCharts(document.querySelector("#expense-chart"), options);
+      chart.render();
+    }
+
+    function handleFormSubmit(e) {
+      e.preventDefault();
+
+      const date = document.getElementById('date').value;
+      const time = document.getElementById('time').value;
+      const detail = document.getElementById('expense-detail').value;
+      const amount = document.getElementById('expense-amount').value;
+      const bill = document.getElementById('expense-bill').files[0];
+      const billUrl = bill ? URL.createObjectURL(bill) : '';
+
+      const expense = {
+        srNo,
+        date,
+        time,
+        detail,
+        amount,
+        bill: billUrl
+      };
+
+      expenses.push(expense);
+      srNo++;
+
+      // Reset form inputs
+      document.getElementById('date').value = '';
+      document.getElementById('time').value = '';
+      document.getElementById('expense-detail').value = '';
+      document.getElementById('expense-amount').value = '';
+      document.getElementById('expense-bill').value = '';
+
+      // Display expense bill image in the preview section
+      const expenseBillPreview = document.getElementById('expense-bill-preview');
+      expenseBillPreview.innerHTML = '';
+      if (billUrl) {
+        const imageTag = document.createElement('img');
+        imageTag.src = billUrl;
+        imageTag.className = 'expense-image';
+        expenseBillPreview.appendChild(imageTag);
+      }
+
+      updateExpenseTable();
+    }
+
+    function deleteExpense(srNo) {
+      expenses = expenses.filter((expense) => expense.srNo !== srNo);
+      updateExpenseTable();
+    }
+
+    function editExpense(srNo) {
+      const expense = expenses.find((expense) => expense.srNo === srNo);
+      if (expense) {
+        document.getElementById('date').value = expense.date;
+        document.getElementById('time').value = expense.time;
+        document.getElementById('expense-detail').value = expense.detail;
+        document.getElementById('expense-amount').value = expense.amount;
+        document.getElementById('expense-bill').value = '';
+
+        const expenseBillPreview = document.getElementById('expense-bill-preview');
+        expenseBillPreview.innerHTML = '';
+        if (expense.bill) {
+          const imageTag = document.createElement('img');
+          imageTag.src = expense.bill;
+          imageTag.className = 'expense-image';
+          expenseBillPreview.appendChild(imageTag);
+        }
+
+        deleteExpense(srNo);
+      }
+    }
+
+    // Function to generate and download CSV file
+    function downloadCSV() {
+      let csvContent = 'data:text/csv;charset=utf-8,';
+      csvContent += 'Sr No,Date,Time,Expense Detail,Expense Amount,Expense Bill\n';
+
+      expenses.forEach((expense) => {
+        const row = [
+          expense.srNo,
+          expense.date,
+          expense.time,
+          expense.detail,
+          expense.amount
+        ];
+        csvContent += row.join(',') + '\n';
+      });
+
+      const encodedURI = encodeURI(csvContent);
+      const link = document.createElement('a');
+      link.setAttribute('href', encodedURI);
+      link.setAttribute('download', 'monthly_expenses.csv');
+      document.body.appendChild(link);
+      link.click();
+    }
+
+    // Function to download the image of the website
+    function downloadWebsiteImage() {
+      const websiteElement = document.documentElement;
+      html2canvas(websiteElement).then(function (canvas) {
+        const imageURL = canvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        link.setAttribute('href', imageURL);
+        link.setAttribute('download', 'website_image.png');
+        document.body.appendChild(link);
+        link.click();
+      });
+    }
+
+    document.getElementById('expense-form').addEventListener('submit', handleFormSubmit);
+
+    // Add event listener for CSV download
+    document.getElementById('download-csv').addEventListener('click', downloadCSV);
+
+    // Add event listener for website image download
+    document.getElementById('download-website-image').addEventListener('click', downloadWebsiteImage);
+
+    // Set creation date in website credit section
+    const creationDateElement = document.getElementById('creation-date');
+    const now = new Date();
+    const creationDate = now.toLocaleString();
+    creationDateElement.textContent = creationDate;
+  </script>
+</body>
+</html>
